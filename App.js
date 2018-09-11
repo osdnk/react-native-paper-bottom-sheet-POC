@@ -24,6 +24,7 @@ const {
   call,
   divide,
   stopClock,
+  greaterOrEq,
   clockRunning,
   sub,
   lessThan,
@@ -166,7 +167,7 @@ class BottomSheetBehaviour extends Component {
   render() {
     const { children, containerStyle: style, renderHeader, ...rest } = this.props;
     return (
-      <Animated.View style={[{ transform: [{ translateY: this._transY }] }, style]}>
+      <Animated.View style={[{ transform: [{ translateY: this._transY }], height: '100%', width: '100%', position: 'absolute'}]}>
         <Animated.Code>
           {() => block(
             [
@@ -195,31 +196,37 @@ class BottomSheetBehaviour extends Component {
             ])
           }
         </Animated.Code>
+
+        <Animated.Code>
+          {() => block(
+            [
+           //   call([this._transY], x => console.log(x)),
+              cond(greaterOrEq(this.props.snapPoints[0], this._transY), set(this.stateIsScrollingContent,1))
+            ])
+          }
+        </Animated.Code>
+
+
         <PanGestureHandler
           {...rest}
           maxPointers={1}
           onGestureEvent={this._onGestureEventHeader}
           onHandlerStateChange={this._onGestureEventHeader}>
-          <Animated.View style={{ width: '100%' }}>
+          <Animated.View>
             {renderHeader && renderHeader()}
           </Animated.View>
         </PanGestureHandler>
-        <View style={{ width: '100%', backgroundColor: 'red', height: 30 }}/>
         <PanGestureHandler
           maxPointers={1}
           onGestureEvent={this._onGestureEvent}
           simultaneousHandlers={this.scrollViewRef}
+         // enabled={this.state.isScrollingContent}
           onHandlerStateChange={this._onGestureEvent}>
-          <Animated.View
-            style={{ width: '100%' }}
-          >
+          <Animated.View style={{ flex: 1 }}>
             <NativeViewGestureHandler
               ref={this.scrollViewRef}
             >
               <Animated.ScrollView
-                style={{
-                  width: '100%', height: 400
-                }}
                 ref={this.scrollViewComponentRef}
                 onScrollBeginDrag={this.registerFirstTouch}
                 onScrollEndDrag={this._onRegisterEnd}
