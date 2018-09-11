@@ -1,5 +1,5 @@
 import React, { Component } from 'react';
-import { Dimensions, StyleSheet, View, Platform } from 'react-native';
+import { Dimensions, StyleSheet, View } from 'react-native';
 import { NativeViewGestureHandler, PanGestureHandler, State } from 'react-native-gesture-handler';
 import Animated from 'react-native-reanimated';
 import ListExample from './ListExample';
@@ -12,12 +12,11 @@ const {
   cond,
   eq,
   greaterThan,
-  block,
-  or,
   add,
-  neq,
   onChange,
   multiply,
+  or,
+  block,
   spring,
   startClock,
   and,
@@ -30,6 +29,7 @@ const {
   defined,
   Value,
   Clock,
+  neq,
   event,
 } = Animated;
 
@@ -77,17 +77,17 @@ class BottomSheetBehaviour extends Component {
     }
 
 
+    this._dragY = new Value(0);
     this.dragY = new Value(0);
-    this.untraverdtedDragY = new Value(0);
-    this.gstate = new Value(-1);
+    const state = new Value(-1);
     const dragVY = new Value(0);
 
     this._onGestureEvent = event([
-      { nativeEvent: { translationY: this.untraverdtedDragY, velocityY: dragVY, state: this.gstate } },
+      { nativeEvent: { translationY: this._dragY, velocityY: dragVY, state: state } },
     ]);
 
     this._onGestureEventHeader = event([
-      { nativeEvent: { translationY: this.dragY, velocityY: dragVY, state: this.gstate } },
+      { nativeEvent: { translationY: this.dragY, velocityY: dragVY, state: state } },
     ]);
 
     const transY = new Value();
@@ -111,7 +111,7 @@ class BottomSheetBehaviour extends Component {
 
     const calledInCurrentBatch = new Value(0);
     this._transY = cond(
-      eq(this.gstate, State.ACTIVE),
+      eq(state, State.ACTIVE),
       [
         stopClock(clock),
         set(transY, cond(lessThan(transY, props.snapPoints[0]), props.snapPoints[0], add(transY, sub(this.dragY, prevDragY)))),
@@ -135,103 +135,89 @@ class BottomSheetBehaviour extends Component {
     );
     this.state = {
       isScrollingContent: true
-    };
+    }
   }
 
-  hasEndedDragging = new Value(0);
-
-  onScrollingEnded = (v) => {
-    console.log(v);
-    console.log(v[0], this.props.snapPoints[0]);
-    console.log(this.scrollViewComponentRef)
-    this.setState({ isScrollingContent: v[0] === this.props.snapPoints[0] });
-  };
-
-
   initialY = new Value(0);
-  scrollViewRef = React.createRef();
-  scrollViewComponentRef = React.createRef();
-  mainPanRef = React.createRef();
 
-
-  _onRegisterEnd = Animated.event(
-    [{ nativeEvent: { contentOffset: { y: this.hasEndedDragging } } }]
-  );
-
-  registerFirstTouch = Animated.event(
+  _onRegisterLastScroll = Animated.event(
     [{ nativeEvent: { contentOffset: { y: this.initialY } } }]
   );
 
-  stateIsScrollingContent = new Value(1); // to be sync with state
+
+
+
+
+  scrollViewRef = React.createRef();
+  scrollViewComponentRef = React.createRef();
+  mainPanRef = React.createRef();
+  startSnapPoint = new Value(0); // not sure
+  //isScrollingContent = new Value(0);
+
+
+
+
+
   render() {
+    console.log(this.scrollViewComponentRef)
     const { children, containerStyle: style, renderHeader, ...rest } = this.props;
     return (
-      <Animated.View style={[{ transform: [{ translateY: this._transY }] }, style]}>
-        <Animated.Code>
-          {() => block(
-            [
-              set(this.dragY, cond(or(greaterThan(this.untraverdtedDragY, this.initialY), neq(this._transY, this.props.snapPoints[0])), sub(this.untraverdtedDragY, this.initialY), 0))
-            ])
-          }
-        </Animated.Code>
-
-        <Animated.Code>
-          {() => block(
-            [
-              onChange(this.gstate, cond(eq(this.gstate, State.END),
-                [set(this.initialY, 0),
-                  set(this.untraverdtedDragY, 0),
-                  set(this.stateIsScrollingContent, eq(this.props.snapPoints[0], this.snapPoint))
-                ])),
-            ])
-          }
-        </Animated.Code>
-
-        <Animated.Code>
-          {() => block(
-            [
-              onChange(this.stateIsScrollingContent, call([this.snapPoint], this.onScrollingEnded)),
-              Platform.OS === 'android' && onChange(this._transY, call([], () => this.scrollViewComponentRef.current.getNode().scrollTo({ y: 0 })))
-            ])
-          }
-        </Animated.Code>
-        <PanGestureHandler
-          {...rest}
-          maxPointers={1}
-          onGestureEvent={this._onGestureEventHeader}
-          onHandlerStateChange={this._onGestureEventHeader}>
-          <Animated.View style={{ width: '100%' }}>
-            {renderHeader && renderHeader()}
-          </Animated.View>
-        </PanGestureHandler>
-        <View style={{ width: '100%', backgroundColor: 'red', height: 30 }}/>
-        <PanGestureHandler
-          maxPointers={1}
-          onGestureEvent={this._onGestureEvent}
-          simultaneousHandlers={this.scrollViewRef}
-          onHandlerStateChange={this._onGestureEvent}>
-          <Animated.View
-            style={{ width: '100%' }}
+        <Animated.View style={[{ transform: [{ translateY: this._transY }] }, style]}>
+          <PanGestureHandler
+            {...rest}
+            maxPointers={1}
+            ref={this.mainPanRef}
+            onGestureEvent={this._onGestureEventHeader}
+            onHandlerStateChange={this._onGestureEventHeader}
+            simultaneousHandlers={this.scrollViewRef}
           >
+            <Animated.View
+              style={{width: '100%', height: '100%'}}
+            >
+            {renderHeader && renderHeader()}
+            </Animated.View>
+          </PanGestureHandler>
+          <Animated.Code>
+            {() => block(
+              [
+                onChange(this.hasEndedDragging, [set(this.initialY, 0), call([this.snapPoint], this.onScrollingEnded)]),
+             //   cond(greaterThan(this._dragY, this.initialY), set(this.isScrollingContent, 1)),
+
+                set(this.dragY, cond(greaterThan(this._dragY, this.initialY), sub(this._dragY, this.initialY), 0))
+              ])
+            }
+          </Animated.Code>
+          <PanGestureHandler
+            {...rest}
+            maxPointers={1}
+            ref={this.mainPanRef}
+            onGestureEvent={this._onGestureEvent}
+            onHandlerStateChange={this._onGestureEvent}
+            simultaneousHandlers={this.scrollViewRef}
+          >
+            <Animated.View
+              style={{width: '100%', height: 300}}
+            >
             <NativeViewGestureHandler
               ref={this.scrollViewRef}
             >
               <Animated.ScrollView
+                ref = {this.scrollViewComponentRef}
                 style={{
-                  width: '100%', height: 400
+                  width: '100%',
+                  height: '100%'
                 }}
-                ref={this.scrollViewComponentRef}
-                onScrollBeginDrag={this.registerFirstTouch}
-                onScrollEndDrag={this._onRegisterEnd}
                 bounces={false}
                 scrollEnabled={this.state.isScrollingContent}
+                onScrollEndDrag={this._onRegisterEnd}
+                onScrollBeginDrag={this._onRegisterLastScroll}
                 contentContainerStyle={style}>
                 {children}
               </Animated.ScrollView>
             </NativeViewGestureHandler>
-          </Animated.View>
-        </PanGestureHandler>
-      </Animated.View>
+            </Animated.View>
+          </PanGestureHandler>
+        </Animated.View>
     );
   }
 }
@@ -241,7 +227,7 @@ export default class Example extends Component {
     title: 'BottomSheetBehaviour Example',
   };
   _renderHeader = () =>
-    <View style={{ width: '100%', height: 32, backgroundColor: '#6200ee' }}/>;
+    <View style={{ width: '100%', height: 64, backgroundColor: '#6200ee' }}/>;
 
   render() {
     return (
