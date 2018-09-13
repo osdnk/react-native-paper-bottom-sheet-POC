@@ -195,7 +195,7 @@ class BottomSheetBehaviour extends Component {
                   ])
                   }
                   style={{
-                    opacity: (cond(this.isScrollViewVisible, 1, 0)),
+                    opacity: (cond(this.isScrollViewVisible, 1, 0.1)),
                     height: '100%',
                     width: '100%',
                   }}
