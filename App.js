@@ -23,6 +23,7 @@ const {
   call,
   divide,
   stopClock,
+  not,
   clockRunning,
   sub,
   lessThan,
@@ -79,16 +80,21 @@ class BottomSheetBehaviour extends Component {
     this.__scrollYListener = new Value(0);
 
 
-    const dragY = new Value(0);
+    this.dragY = new Value(0);
+    this.untraverdtedDragY = new Value(0);
     const state = new Value(-1);
     const dragVY = new Value(0);
 
+    this._onGestureEventHeader = event([
+      { nativeEvent: { translationY: this.dragY, velocityY: dragVY, state: state } },
+    ]);
+
     this._onGestureEvent = event([
-      { nativeEvent: { translationY: dragY, velocityY: dragVY, state: state } },
+      { nativeEvent: { translationY: this.untraverdtedDragY, velocityY: dragVY, state: state } },
     ]);
 
     const transY = new Value();
-    const prevDragY = new Value(0);
+    this.prevDragY = new Value(0);
 
     const clock = new Clock();
     const destPoint = add(transY, multiply(TOSS_SEC, dragVY))
@@ -105,7 +111,9 @@ class BottomSheetBehaviour extends Component {
 
 
     const snapPoint = prepareCurrentSnapPoint();
+    this.lastPositionOfDragBeforeChangingVisibility = new Value(0);
 
+    this.isFistTouch = new Value(1);
 
     const finishedDragging = lessThan(transY, props.snapPoints[0]);
     const calledInCurrentBatch = new Value(0);
@@ -113,8 +121,8 @@ class BottomSheetBehaviour extends Component {
       eq(state, State.ACTIVE ),
       [
         stopClock(clock),
-        set(transY,  add(transY, sub(dragY, prevDragY))),
-        set(prevDragY, dragY),
+        set(transY,  add(transY, sub(this.dragY, this.prevDragY))),
+        set(this.prevDragY, this.dragY),
         //call([transY], (x) => console.warn(x[0])),
         cond(lessThan(transY, props.snapPoints[0]), [
           cond(calledInCurrentBatch, 0, [
@@ -124,11 +132,13 @@ class BottomSheetBehaviour extends Component {
         ], transY),
       ],
       [
-        set(prevDragY, 0),
+        cond(and(eq(state, State.END), not(and(defined(transY), greaterThan(transY, props.snapPoints[0])))),
+          set(this.isFistTouch, 1)),
+        set(this.prevDragY, 0),
         set(
           transY,
           cond(and(defined(transY), greaterThan(transY, props.snapPoints[0])),
-            runSpring(clock, transY, dragVY, snapPoint), props.snapPoints[0]
+            runSpring(clock, transY, dragVY, snapPoint, ), props.snapPoints[0]
           )
         ),
       ]
@@ -142,15 +152,46 @@ class BottomSheetBehaviour extends Component {
         <Animated.View style={[{ transform: [{ translateY: this._transY }] }, style]}>
           <Animated.Code>
             {() =>
+              set(this.dragY, sub(this.untraverdtedDragY, this.lastPositionOfDragBeforeChangingVisibility))
+            }
+          </Animated.Code>
+          <Animated.Code>
+            {() =>
               onChange(this.isScrollViewVisible,
-                cond(this.isScrollViewVisible, set(this.__dummyHeight, add(this.__scrollYListener)), set(this.__dummyHeight, 1000)))
+                cond(this.isScrollViewVisible, [
+                  set(this.__dummyHeight, add(this.__scrollYListener))
+                ], [
+                 // set(this.prevDragY, this.untraverdtedDragY),
+                  set(this.__dummyHeight, 1000),
+                ]))
+            }
+          </Animated.Code>
+
+          <Animated.Code>
+            {() =>
+              onChange(this.__scrollYListener,
+                //onChange(this.isFistTouch,
+                cond(this.isFistTouch,
+                [
+                  set(this.isFistTouch, 0),
+                  cond(this.isScrollViewVisible,
+                  set(this.lastPositionOfDragBeforeChangingVisibility, sub(this.__scrollYListener, this.__dummyHeight)))
+                  //call([sub(this.__scrollYListener, this.__dummyHeight)], k => console.warn(k[0])),
+
+                  //   set(this.lastPositionOfDragBeforeChangingVisibility, this.untraverdtedDragY),
+                ],
+                [
+                  //  set(this.dragY, sub(this.untraverstedDragY, this.lastPositionOfDragBeforeChangingVisibility)),
+                  // call([this.dragY], (t) => console.warn(t[0])),
+                ]
+              ))
             }
           </Animated.Code>
           <PanGestureHandler
             {...rest}
             maxPointers={1}
-            onGestureEvent={this._onGestureEvent}
-            onHandlerStateChange={this._onGestureEvent}>
+            onGestureEvent={this._onGestureEventHeader}
+            onHandlerStateChange={this._onGestureEventHeader}>
             <Animated.View style={{ width: '100%'}}>
           {renderHeader && renderHeader()}
             </Animated.View>
