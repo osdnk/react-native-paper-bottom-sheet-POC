@@ -1,9 +1,7 @@
 import React, { Component } from 'react';
 import { StyleSheet, View, Dimensions, ScrollView } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
-import { Appbar } from 'react-native-paper'
-import Animated  from 'react-native-reanimated';
-import { Surface } from 'react-native-paper';
+import Animated, { Easing }  from 'react-native-reanimated';
 import ListExample from './ListExample';
 import ListAccExample from './ListAccExample';
 
@@ -14,6 +12,7 @@ const {
   cond,
   eq,
   greaterThan,
+  timing,
   add,
   onChange,
   multiply,
@@ -26,23 +25,24 @@ const {
   clockRunning,
   sub,
   lessThan,
+  block,
   defined,
   Value,
   Clock,
   event,
 } = Animated;
 
-function runSpring(clock, value, velocity, dest) {
+function runSpring(clock, value, velocity, dest, position = new Value(0)) {
   const state = {
     finished: new Value(0),
     velocity: new Value(0),
-    position: new Value(0),
+    position,
     time: new Value(0),
   };
 
   const config = {
-    damping: 15,
-    mass: 0.7,
+    damping: 20,
+    mass: 0.4,
     stiffness: 221.6,
     overshootClamping: false,
     restSpeedThreshold: 0.001,
@@ -65,16 +65,16 @@ function runSpring(clock, value, velocity, dest) {
 }
 
 class BottomSheetBehaviour extends Component {
+  height = new Value(0);
   constructor(props) {
     super(props);
+    this.onLayout = event => this.height.setValue(event.nativeEvent.layout.height - height);
 
-    const TOSS_SEC = 0.1;
-   // const props.snapPoints = props.snapPoints.map(i => -i);
+    const TOSS_SEC = 0.001;
     const middlesOfSnapPoints = [];
     for (let i = 1; i < props.snapPoints.length; i++) {
       middlesOfSnapPoints.push(divide(add(props.snapPoints[i-1] + props.snapPoints[i]), 2))
     }
-
 
     const dragY = new Value(0);
     const state = new Value(-1);
@@ -89,7 +89,7 @@ class BottomSheetBehaviour extends Component {
 
     const clock = new Clock();
     const destPoint = add(transY, multiply(TOSS_SEC, dragVY))
-   
+
 
     const prepareCurrentSnapPoint = (i = 0) => i + 1 === props.snapPoints.length ?
       props.snapPoints[i] :
@@ -99,32 +99,37 @@ class BottomSheetBehaviour extends Component {
         prepareCurrentSnapPoint(i + 1)
       );
 
-
-
     const snapPoint = prepareCurrentSnapPoint();
 
+    const unMargined = new Value(0);
 
-    const calledInCurrentBatch = new Value(0);
     this._transY = cond(
       eq(state, State.ACTIVE ),
       [
         stopClock(clock),
-        set(transY, cond(lessThan(transY, props.snapPoints[0]), props.snapPoints[0], add(transY, sub(dragY, prevDragY)))),
+
+        set(transY,
+          cond(greaterThan(multiply(-1, add(transY, sub(dragY, prevDragY))), this.height),
+            multiply(this.height, -1),
+            add(transY, sub(dragY, prevDragY)),
+          ),
+        ),
         set(prevDragY, dragY),
-        //call([transY], (x) => console.warn(x[0])),
-        cond(lessThan(transY, props.snapPoints[0]), [
-          cond(calledInCurrentBatch, 0, [
-            set(calledInCurrentBatch, 1),
-          ]),
-          props.snapPoints[0]
-        ], transY),
+        transY,
       ],
       [
         set(prevDragY, 0),
         set(
           transY,
-          cond(and(defined(transY), greaterThan(transY, props.snapPoints[0])),
-            runSpring(clock, transY, dragVY, snapPoint), props.snapPoints[0]
+          cond(defined(transY),
+              [
+              runSpring(clock, transY, dragVY, cond(greaterThan(transY, props.snapPoints[0]), snapPoint, add(transY, multiply(0.2, dragVY))), unMargined),
+                cond(greaterThan(multiply(-1, unMargined), this.height),
+                  multiply(this.height, -1),
+                  unMargined
+                ),
+           ],
+            props.snapPoints[0]
           )
         ),
       ]
@@ -138,17 +143,31 @@ class BottomSheetBehaviour extends Component {
         maxPointers={1}
         onGestureEvent={this._onGestureEvent}
         onHandlerStateChange={this._onGestureEvent}>
-        <Animated.View style={[{ transform: [{ translateY: this._transY }] }, style]}>
-          {renderHeader && renderHeader()}
-          <ScrollView
+        <Animated.View
+          style={{ width: '100%', position: 'absolute', overflow: 'hidden',
+          transform: [{
+            translateY: cond(greaterThan(this._transY, this.props.snapPoints[0]), this._transY, this.props.snapPoints[0])
+          }]
+        }}
+        >
+          <Animated.View
             style={{
-              width: '100%',
-              height: '100%'
+              zIndex: 1,
             }}
-            scrollEnabled = {false}
-            contentContainerStyle={style}>
+          >
+            {renderHeader && renderHeader()}
+          </Animated.View>
+          <Animated.View
+            onLayout={this.onLayout}
+            style={{
+              transform: [{
+                translateY: cond(greaterThan(this._transY, this.props.snapPoints[0]), 0, sub(this._transY, this.props.snapPoints[0]))
+              }],
+              height: '100%',
+            }}
+          >
           {children}
-          </ScrollView>
+          </Animated.View>
         </Animated.View>
       </PanGestureHandler>
     );
@@ -160,14 +179,15 @@ export default class Example extends Component {
     title: 'BottomSheetBehaviour Example',
   };
   _renderHeader = () =>
-    <View style = {{ width: '100%', height: 32, backgroundColor: '#6200ee' }}/>
+    <View style = {{ height: 32, backgroundColor: '#6200ee' }}/>
   render() {
     return (
-      <View style={styles.container}>
+      <View style={styles.container}
+      >
         <ListAccExample/>
         <BottomSheetBehaviour
           containerStyle={styles.innerContainer}
-          snapPoints = {[0, 300, 500]}
+          snapPoints = {[100, 300, 500]}
           renderHeader={this._renderHeader}
         >
           <ListExample/>

@@ -1,13 +1,8 @@
 import * as React from 'react';
 import { ScrollView, StyleSheet, View, Image } from 'react-native';
 import { List, Divider, withTheme, Surface, Appbar } from 'react-native-paper';
-import type { Theme } from 'react-native-paper/types';
 
-type Props = {
-  theme: Theme,
-};
-
-class ListAccordionExample extends React.Component<Props> {
+class ListAccordionExample extends React.Component {
   static title = 'List.Accordion';
 
   render() {
@@ -84,8 +79,7 @@ class ListAccordionExample extends React.Component<Props> {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    width: '100%',
-    height: '100%'
+    backgroundColor: 'red',
   },
 });
 
