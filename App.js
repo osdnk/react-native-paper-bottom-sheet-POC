@@ -89,7 +89,7 @@ class BottomSheetBehaviour extends Component {
     ]);
 
     this.onHeaderGestureEvent = event([
-      { nativeEvent: { translationY, velocityY,state: hstate } },
+      { nativeEvent: { translationY, velocityY,state: state } },
     ]);
 
 
@@ -132,50 +132,96 @@ class BottomSheetBehaviour extends Component {
     const handleBottomMargin = trans => cond(lessThan(trans, contentHeight), contentHeight, trans);
 
     const resultTranslateY =
-        cond(
-          eq(state, State.ACTIVE),
-          // if handler if active
-          [
-            // mark no-manual handling
-            set(isManuallySetValue, 0),
-            // start animation behaviour
-            stopClock(clock),
-            // set movement with bottom limit
-            set(movement,
-              handleBottomMargin(add(movement, sub(translationY, previousTranslationY)))
-            ),
-            // capture offset
-            set(previousTranslationY, translationY),
-            // return movement
+      cond(
+        eq(state, State.ACTIVE),
+        // if handler if active
+        [
+          // mark no-manual handling
+          set(isManuallySetValue, 0),
+          // start animation behaviour
+          stopClock(clock),
+          // set movement with bottom limit
+          set(movement,
+            handleBottomMargin(add(movement, sub(translationY, previousTranslationY)))
+          ),
+          // capture offset
+          set(previousTranslationY, translationY),
+          // return movement
+          movement,
+        ],
+        [
+          // if handler is not active
+          set(previousTranslationY, 0),
+          set(
             movement,
-          ],
-          [
-            // if handler is not active
-            set(previousTranslationY, 0),
-            set(
-              movement,
-              // check if first invoke (on very beginning)
-              cond(defined(movement),
-                // if not first
-                [
-                  // animate to
-                  runSpring(clock, movement, velocityY,
-                    // if set manually, animate to given value
-                    cond(isManuallySetValue, manuallySetValue,
-                      // if not move snap point.
-                      // However allow for moving above first snap point.
-                      // Hidden overflow covers this case
-                      // Save result to inertiaMovement
-                      cond(greaterOrEq(movement, snapPoints[0]), snapPoint, add(movement, multiply(toss, velocityY)))), inertiaMovement),
-                  // and return inertiaMovement wth bottom limitation
-                  handleBottomMargin(inertiaMovement)
-                ],
-                // if first, move to initial snap point on very beginning
-                snapPoints[initialSnapPoint]
-              )
-            ),
-          ]
-        )
+            // check if first invoke (on very beginning)
+            cond(defined(movement),
+              // if not first
+              [
+                // animate to
+                runSpring(clock, movement, velocityY,
+                  // if set manually, animate to given value
+                  cond(isManuallySetValue, manuallySetValue,
+                    // if not move snap point.
+                    // However allow for moving above first snap point.
+                    // Hidden overflow covers this case
+                    // Save result to inertiaMovement
+                    cond(greaterOrEq(movement, snapPoints[0]), snapPoint, add(movement, multiply(toss, velocityY)))), inertiaMovement),
+                // and return inertiaMovement wth bottom limitation
+                handleBottomMargin(inertiaMovement)
+              ],
+              // if first, move to initial snap point on very beginning
+              snapPoints[initialSnapPoint]
+            )
+          ),
+        ]
+      )
+
+    const resultTranslateYH =
+      cond(
+        eq(state, State.ACTIVE),
+        // if handler if active
+        [
+          // mark no-manual handling
+          set(isManuallySetValue, 0),
+          // start animation behaviour
+          stopClock(clock),
+          // set movement with bottom limit
+          set(movement,
+            handleBottomMargin(add(movement, sub(translationY, previousTranslationY)))
+          ),
+          // capture offset
+          set(previousTranslationY, translationY),
+          // return movement
+          movement,
+        ],
+        [
+          // if handler is not active
+          set(previousTranslationY, 0),
+          set(
+            movement,
+            // check if first invoke (on very beginning)
+            cond(defined(movement),
+              // if not first
+              [
+                // animate to
+                runSpring(clock, movement, velocityY,
+                  // if set manually, animate to given value
+                  cond(isManuallySetValue, manuallySetValue,
+                    // if not move snap point.
+                    // However allow for moving above first snap point.
+                    // Hidden overflow covers this case
+                    // Save result to inertiaMovement
+                    cond(greaterOrEq(movement, snapPoints[0]), snapPoint, add(movement, multiply(toss, velocityY)))), inertiaMovement),
+                // and return inertiaMovement wth bottom limitation
+                handleBottomMargin(inertiaMovement)
+              ],
+              // if first, move to initial snap point on very beginning
+              snapPoints[initialSnapPoint]
+            )
+          ),
+        ]
+      )
     // set manually snap point
     this.setSnap = index => {
       // set value
@@ -187,7 +233,7 @@ class BottomSheetBehaviour extends Component {
     // component follow movement. But stop on very first snap point
     this.componentMovements = cond(greaterThan(resultTranslateY, snapPoints[0]), resultTranslateY, snapPoints[0]);
     // content moves only when first snap point is reached
-    this.contentMovement = cond(greaterThan(resultTranslateY, snapPoints[0]), multiply(1, contentOffset), sub(resultTranslateY, snapPoints[0], contentOffset));
+    this.contentMovement = cond(greaterThan(resultTranslateY, snapPoints[0]), 0, sub(resultTranslateY, snapPoints[0], contentOffset));
 
   }
 
