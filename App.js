@@ -1,155 +1,211 @@
 import React, { Component } from 'react';
-import { StyleSheet, View, Dimensions, ScrollView } from 'react-native';
+import { StyleSheet, View, Dimensions } from 'react-native';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
-import Animated, { Easing }  from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import ListExample from './ListExample';
 import ListAccExample from './ListAccExample';
+import { Button } from 'react-native-paper';
 
-const {height} = Dimensions.get('window');
+const { height } = Dimensions.get('window');
 
 const {
   set,
+  onChange,
   cond,
+  or,
+  block,
   eq,
   greaterThan,
-  timing,
   add,
-  onChange,
   multiply,
   spring,
+  greaterOrEq,
   startClock,
-  and,
-  call,
   divide,
   stopClock,
   clockRunning,
   sub,
   lessThan,
-  block,
   defined,
   Value,
   Clock,
   event,
+  lessOrEq,
 } = Animated;
 
-function runSpring(clock, value, velocity, dest, position = new Value(0)) {
-  const state = {
-    finished: new Value(0),
-    velocity: new Value(0),
-    position,
-    time: new Value(0),
-  };
-
-  const config = {
-    damping: 20,
-    mass: 0.4,
-    stiffness: 221.6,
-    overshootClamping: false,
-    restSpeedThreshold: 0.001,
-    restDisplacementThreshold: 0.001,
-    toValue: new Value(0),
-  };
-
-  return [
-    cond(clockRunning(clock), 0, [
-      set(state.finished, 0),
-      set(state.velocity, velocity),
-      set(state.position, value),
-      set(config.toValue, dest),
-      startClock(clock),
-    ]),
-    spring(clock, state, config),
-    cond(state.finished, stopClock(clock)),
-    state.position,
-  ];
-}
-
 class BottomSheetBehaviour extends Component {
-  height = new Value(0);
   constructor(props) {
     super(props);
-    this.onLayout = event => this.height.setValue(event.nativeEvent.layout.height - height);
+    const { toss, damping, mass, stiffness, snapPoints, initialSnapPoint } = props;
+    const contentHeight = new Value(0);
+    // Defining parametrised spring animation
+    const runSpring = (clock, value, velocity, destination, position = new Value(0)) => {
+      const state = {
+        finished: new Value(0),
+        velocity: new Value(0),
+        position,
+        time: new Value(0),
+      };
 
-    const TOSS_SEC = 0.001;
-    const middlesOfSnapPoints = [];
-    for (let i = 1; i < props.snapPoints.length; i++) {
-      middlesOfSnapPoints.push(divide(add(props.snapPoints[i-1] + props.snapPoints[i]), 2))
-    }
+      const config = {
+        damping,
+        mass,
+        stiffness,
+        overshootClamping: true,
+        restSpeedThreshold: 0.1,
+        restDisplacementThreshold: 0.01,
+        toValue: destination,
+      };
 
-    const dragY = new Value(0);
+      return [
+        cond(clockRunning(clock), 0, [
+          set(state.finished, 0),
+          set(state.velocity, velocity),
+          set(state.position, value),
+          startClock(clock),
+        ]),
+        spring(clock, state, config),
+        cond(state.finished, stopClock(clock)),
+        state.position,
+      ];
+    };
+    // clock used for animations
+    const clock = new Clock();
+
+    // There's need to measure content in order to prevent scrolling on end reached
+    this.onLayout = event => contentHeight.setValue(height - event.nativeEvent.layout.height);
+
+    // Values passed from handler
+    const translationY = new Value(0);
+    const htranslationY = new Value(0);
+    const contentOffset = new Value(0);
     const state = new Value(-1);
-    const dragVY = new Value(0);
+    const hstate = new Value(-1);
+    const velocityY = new Value(0);
 
-    this._onGestureEvent = event([
-      { nativeEvent: { translationY: dragY, velocityY: dragVY, state: state } },
+    // Gesture handler's method
+    this.onGestureEvent = event([
+      { nativeEvent: { translationY, velocityY, state } },
     ]);
 
-    const transY = new Value();
-    const prevDragY = new Value(0);
-
-    const clock = new Clock();
-    const destPoint = add(transY, multiply(TOSS_SEC, dragVY))
+    this.onHeaderGestureEvent = event([
+      { nativeEvent: { translationY, velocityY,state: hstate } },
+    ]);
 
 
-    const prepareCurrentSnapPoint = (i = 0) => i + 1 === props.snapPoints.length ?
-      props.snapPoints[i] :
+
+    // These value are used for choosing next snapPoint
+    const middlesOfSnapPoints = [];
+    for (let i = 1; i < snapPoints.length; i++) {
+      middlesOfSnapPoints.push(divide(add(snapPoints[i - 1] + snapPoints[i]), 2));
+    }
+
+    // movement defines current position of content
+    const movement = new Value();
+    const previousTranslationY = new Value(0);
+
+    // destination point is a approximation of movement if finger released
+    const destinationPoint = add(movement, multiply(toss, velocityY));
+
+    // method for generating condition for finding the nearest snap point
+    const currentSnapPoint = (i = 0) => i + 1 === snapPoints.length ?
+      snapPoints[i] :
       cond(
-        lessThan(destPoint, middlesOfSnapPoints[i]),
-        props.snapPoints[i],
-        prepareCurrentSnapPoint(i + 1)
+        lessThan(destinationPoint, middlesOfSnapPoints[i]),
+        snapPoints[i],
+        currentSnapPoint(i + 1)
       );
+    // current snap point desired
+    const snapPoint = currentSnapPoint();
 
-    const snapPoint = prepareCurrentSnapPoint();
 
-    const unMargined = new Value(0);
+    // extra params for handling manual setting of value
+    const manuallySetValue = new Value(0);
+    const isManuallySetValue = new Value(0);
 
-    this._transY = cond(
-      eq(state, State.ACTIVE ),
-      [
-        stopClock(clock),
+    // extra var for passing position of component released
+    const inertiaMovement = new Value(0);
 
-        set(transY,
-          cond(greaterThan(multiply(-1, add(transY, sub(dragY, prevDragY))), this.height),
-            multiply(this.height, -1),
-            add(transY, sub(dragY, prevDragY)),
-          ),
-        ),
-        set(prevDragY, dragY),
-        transY,
-      ],
-      [
-        set(prevDragY, 0),
-        set(
-          transY,
-          cond(defined(transY),
-              [
-              runSpring(clock, transY, dragVY, cond(greaterThan(transY, props.snapPoints[0]), snapPoint, add(transY, multiply(0.2, dragVY))), unMargined),
-                cond(greaterThan(multiply(-1, unMargined), this.height),
-                  multiply(this.height, -1),
-                  unMargined
-                ),
-           ],
-            props.snapPoints[0]
-          )
-        ),
-      ]
-    );
+
+
+    // wrapper for defining bottom margin of component
+    const handleBottomMargin = trans => cond(lessThan(trans, contentHeight), contentHeight, trans);
+
+    const resultTranslateY =
+        cond(
+          eq(state, State.ACTIVE),
+          // if handler if active
+          [
+            // mark no-manual handling
+            set(isManuallySetValue, 0),
+            // start animation behaviour
+            stopClock(clock),
+            // set movement with bottom limit
+            set(movement,
+              handleBottomMargin(add(movement, sub(translationY, previousTranslationY)))
+            ),
+            // capture offset
+            set(previousTranslationY, translationY),
+            // return movement
+            movement,
+          ],
+          [
+            // if handler is not active
+            set(previousTranslationY, 0),
+            set(
+              movement,
+              // check if first invoke (on very beginning)
+              cond(defined(movement),
+                // if not first
+                [
+                  // animate to
+                  runSpring(clock, movement, velocityY,
+                    // if set manually, animate to given value
+                    cond(isManuallySetValue, manuallySetValue,
+                      // if not move snap point.
+                      // However allow for moving above first snap point.
+                      // Hidden overflow covers this case
+                      // Save result to inertiaMovement
+                      cond(greaterOrEq(movement, snapPoints[0]), snapPoint, add(movement, multiply(toss, velocityY)))), inertiaMovement),
+                  // and return inertiaMovement wth bottom limitation
+                  handleBottomMargin(inertiaMovement)
+                ],
+                // if first, move to initial snap point on very beginning
+                snapPoints[initialSnapPoint]
+              )
+            ),
+          ]
+        )
+    // set manually snap point
+    this.setSnap = index => {
+      // set value
+      manuallySetValue.setValue(snapPoints[index]);
+      // and mark that's set manually
+      isManuallySetValue.setValue(1);
+    };
+
+    // component follow movement. But stop on very first snap point
+    this.componentMovements = cond(greaterThan(resultTranslateY, snapPoints[0]), resultTranslateY, snapPoints[0]);
+    // content moves only when first snap point is reached
+    this.contentMovement = cond(greaterThan(resultTranslateY, snapPoints[0]), multiply(1, contentOffset), sub(resultTranslateY, snapPoints[0], contentOffset));
+
   }
+
   render() {
     const { children, containerStyle: style, renderHeader, ...rest } = this.props;
     return (
-      <PanGestureHandler
-        {...rest}
-        maxPointers={1}
-        onGestureEvent={this._onGestureEvent}
-        onHandlerStateChange={this._onGestureEvent}>
-        <Animated.View
-          style={{ width: '100%', position: 'absolute', overflow: 'hidden',
+      <Animated.View
+        style={{
+          width: '100%', position: 'absolute', overflow: 'hidden',
           transform: [{
-            translateY: cond(greaterThan(this._transY, this.props.snapPoints[0]), this._transY, this.props.snapPoints[0])
+            translateY: this.componentMovements
           }]
         }}
-        >
+      >
+        <PanGestureHandler
+          {...rest}
+          onGestureEvent={this.onGestureEvent}
+          onHandlerStateChange={this.onHeaderGestureEvent}>
           <Animated.View
             style={{
               zIndex: 1,
@@ -157,37 +213,56 @@ class BottomSheetBehaviour extends Component {
           >
             {renderHeader && renderHeader()}
           </Animated.View>
+        </PanGestureHandler>
+        <PanGestureHandler
+          {...rest}
+          onGestureEvent={this.onGestureEvent}
+          onHandlerStateChange={this.onGestureEvent}>
           <Animated.View
             onLayout={this.onLayout}
             style={{
               transform: [{
-                translateY: cond(greaterThan(this._transY, this.props.snapPoints[0]), 0, sub(this._transY, this.props.snapPoints[0]))
+                translateY: this.contentMovement
               }],
               height: '100%',
             }}
           >
-          {children}
+            {children}
           </Animated.View>
-        </Animated.View>
-      </PanGestureHandler>
-    );
+        </PanGestureHandler>
+      </Animated.View>
+    )
+      ;
   }
 }
+
+BottomSheetBehaviour.defaultProps = {
+  toss: 0.01,
+  damping: 20,
+  mass: 2,
+  stiffness: 130.6,
+  initialSnapPoint: 0,
+};
+
 
 export default class Example extends Component {
   static navigationOptions = {
     title: 'BottomSheetBehaviour Example',
   };
+  BSB = React.createRef();
   _renderHeader = () =>
-    <View style = {{ height: 32, backgroundColor: '#6200ee' }}/>
+    <View style={{ height: 32, backgroundColor: '#6200ee' }}/>;
+
   render() {
     return (
       <View style={styles.container}
       >
+        <Button onPress={() => this.BSB.current.setSnap(2)}/>
         <ListAccExample/>
         <BottomSheetBehaviour
+          ref={this.BSB}
           containerStyle={styles.innerContainer}
-          snapPoints = {[100, 300, 500]}
+          snapPoints={[100, 300, 500]}
           renderHeader={this._renderHeader}
         >
           <ListExample/>
